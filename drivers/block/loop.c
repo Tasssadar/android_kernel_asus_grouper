@@ -524,6 +524,12 @@ static int loop_make_request(struct request_queue *q, struct bio *old_bio)
 
 	BUG_ON(!lo || (rw != READ && rw != WRITE));
 
+	if (unlikely(old_bio->bi_rw & REQ_DISCARD)) {
+		printk("loop_make_request: got discard request, ignoring and returning success!\n");
+		bio_endio(old_bio, 0);
+		return 0;
+	}
+
 	spin_lock_irq(&lo->lo_lock);
 	if (lo->lo_state != Lo_bound)
 		goto out;
@@ -910,6 +916,11 @@ static int loop_set_fd(struct loop_device *lo, fmode_t mode,
 	kobject_uevent(&disk_to_dev(bdev->bd_disk)->kobj, KOBJ_CHANGE);
 
 	set_blocksize(bdev, lo_blocksize);
+
+	lo->lo_queue->limits.discard_granularity = PAGE_SIZE;
+	lo->lo_queue->limits.max_discard_sectors = UINT_MAX;
+	lo->lo_queue->limits.discard_zeroes_data = 0;
+	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, lo->lo_queue);
 
 	lo->lo_thread = kthread_create(loop_thread, lo, "loop%d",
 						lo->lo_number);
